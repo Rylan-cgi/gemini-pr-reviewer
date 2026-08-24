@@ -161,11 +161,12 @@ while true; do
         continue
     fi
 
-    # Compile the active scanning queue list dynamically into a JSON array, filtering out blocked authors
-    QUEUE_JSON=$(echo "$PRS_JSON" | jq -c --arg blocked "$BLOCKED_AUTHORS" '
+    # Compile the active scanning queue list dynamically into a JSON array
+    # Filters out both blocked authors AND the active bot's own self pull requests
+    QUEUE_JSON=$(echo "$PRS_JSON" | jq -c --arg blocked "$BLOCKED_AUTHORS" --arg bot "$BOT_USERNAME" '
       [
         .[] | 
-        select(.author.login as $auth | ($blocked | split(" ") | index($auth)) == null) | 
+        select(.author.login != $bot and (.author.login as $auth | ($blocked | split(" ") | index($auth)) == null)) | 
         {number: .number, author: .author.login, sha: .headRefOid}
       ]
     ')
@@ -176,7 +177,12 @@ while true; do
         AUTHOR=$(echo "$pr_row" | jq -r '.author.login')
         HEAD_SHA=$(echo "$pr_row" | jq -r '.headRefOid')
 
-        # Restriction 1: Filter out blacklisted/blocked authors
+        # Restriction 1a: Do NOT attempt to review your own pull requests (GitHub API restriction)
+        if [ "$AUTHOR" == "$BOT_USERNAME" ]; then
+            continue
+        fi
+
+        # Restriction 1b: Filter out blacklisted/blocked authors
         if is_blocked_author "$AUTHOR"; then
             continue
         fi

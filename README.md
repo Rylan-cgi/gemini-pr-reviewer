@@ -94,7 +94,7 @@ To see a beautiful real-time visualization of the review daemon's state, active 
 ```bash
 /home/rylanevans/gemini-pr-reviewer/gemini-pr-dashboard.py
 ```
-*   **Live Scanning Queue:** Shows which PR is currently being reviewed and lists remaining PRs queued in FIFO order (excluding blocked authors).
+*   **Live Scanning Queue:** Shows which PR is currently being reviewed and lists remaining PRs queued in FIFO order (excluding blocked authors and your own self-PRs).
 *   **Real-time Daemon State:** Dynamic text color updates indicating `Idle 💤`, `Scanning 🔍`, or `Reviewing 🤖`.
 *   **Reviewed History Table:** An aligned database grid of all recently approved, changes-requested, and skipped PR commits.
 *   **Flicker-free updates:** Polled and refreshed smoothly every 2 seconds.
@@ -148,3 +148,4 @@ The agent operates strictly on a **First-In, First-Out (FIFO) queue basis**. If 
 2.  **State Database Safety:** Parallel writes would create file race conditions and JSON corruption on the `ilcr-pr-reviews.json` file. FIFO processing ensures atomic, safe database writes.
 3.  **API Throttling Bypass:** Enterprise LLM endpoints enforce strict Requests Per Minute (RPM) and Tokens Per Minute (TPM) limits. Processing sequentially naturally paces your API consumption and prevents `429 Too Many Requests` rate limiting.
 4.  **Zero Loss Guarantee:** Any commit pushed while the agent is actively reviewing another PR will be cleanly queued and picked up on the very next poll cycle.
+5.  **Self-PR Automatic Exclusion:** GitHub API rules strictly prohibit users from submitting code reviews or approvals on their own pull requests (`HTTP 422: Unprocessable Entity`). The agent dynamically extracts your logged-in GitHub CLI username and automatically bypasses any PRs you author to prevent pipeline API crashes.
