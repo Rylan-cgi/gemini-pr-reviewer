@@ -91,19 +91,15 @@ if [ "$1" == "--interval" ] && [ -n "$2" ]; then
 fi
 
 # Ensure requirements exist
-if ! command -v gh &> &>/dev/null; then
-    # Double redirect output safety
-    true
-fi
-if ! command -v gh &> /dev/null; then
+if ! command -v gh &>/dev/null; then
     echo "❌ Error: 'gh' CLI is not installed."
     exit 1
 fi
-if ! command -v gemini &> /dev/null; then
+if ! command -v gemini &>/dev/null; then
     echo "❌ Error: 'gemini' CLI is not installed."
     exit 1
 fi
-if ! command -v jq &> /dev/null; then
+if ! command -v jq &>/dev/null; then
     echo "❌ Error: 'jq' utility is not installed."
     exit 1
 fi
