@@ -18,9 +18,10 @@ CLR_RED = "\033[91m"
 CLR_BOLD = "\033[1m"
 CLR_RESET = "\033[0m"
 
-def clear_screen():
-    # Dynamic clear to top-left of terminal to prevent screen flicker
-    print("\033[H\033[2J", end="")
+def reset_cursor():
+    # Move terminal cursor back to top-left (row 1, col 1) without clearing screen.
+    # This prevents the scrollbar from jumping and eliminates terminal text flickering.
+    print("\033[H", end="")
 
 def load_json(file_path):
     if not os.path.exists(file_path):
@@ -31,14 +32,16 @@ def load_json(file_path):
     except Exception:
         return {}
 
-def draw_box_line(text, width=76, align="left", color=""):
+def draw_box_line(text, width=78, align="left", color=""):
     inner_width = width - 4
     if align == "center":
         padding = (inner_width - len(text)) // 2
         line = " " * padding + text + " " * (inner_width - len(text) - padding)
     else:
         line = " " + text + " " * (inner_width - len(text) - 1)
-    return f"│ {color}{line}{CLR_RESET} │"
+    # \033[K clears from cursor position to the end of the line.
+    # This wipes any old leftover text from previous ticks without visual flashing.
+    return f"│ {color}{line}{CLR_RESET} │\033[K"
 
 def format_status(status):
     if status == "approved":
@@ -50,7 +53,8 @@ def format_status(status):
     return f"{CLR_BLUE}{status.upper()}{CLR_RESET}"
 
 def render_dashboard():
-    clear_screen()
+    # Keep terminal cursor at top-left
+    reset_cursor()
     
     # Load JSON files
     active = load_json(ACTIVE_STATE_FILE)
@@ -63,9 +67,10 @@ def render_dashboard():
     queue = active.get("queue", [])
 
     width = 78
-    border_top = "┌" + "─" * (width - 2) + "┐"
-    border_bottom = "└" + "─" * (width - 2) + "┘"
-    border_divider = "├" + "─" * (width - 2) + "┤"
+    # Clear-to-end of line is appended to borders to maintain consistent erasure
+    border_top = "┌" + "─" * (width - 2) + "┐\033[K"
+    border_bottom = "└" + "─" * (width - 2) + "┘\033[K"
+    border_divider = "├" + "─" * (width - 2) + "┤\033[K"
 
     # Header Panel
     print(border_top)
@@ -132,15 +137,17 @@ def render_dashboard():
             print(draw_box_line(row_str, width, "left"))
             
     print(border_bottom)
-    print(f"\n{CLR_CYAN}Press Ctrl+C to exit dashboard view.{CLR_RESET}")
+    print(f"\n{CLR_CYAN}Press Ctrl+C to exit dashboard view.{CLR_RESET}\033[K")
 
 def main():
     try:
+        # Full clear once at initial startup to clean screen
+        os.system('clear')
         # Hide standard terminal cursor
         print("\033[?25l", end="")
         while True:
             render_dashboard()
-            time.sleep(2)
+            time.sleep(0.5) # Refresh dynamically every 0.5s for real-time responsiveness
     except KeyboardInterrupt:
         # Restore standard terminal cursor on exit
         print("\033[?25h", end="")
