@@ -162,6 +162,13 @@ while true; do
         continue
     fi
 
+    # Auto-prune merged/closed PR entries from the state database to keep it clean and lean
+    OPEN_PR_NUMBERS=$(echo "$PRS_JSON" | jq -r '.[] | .number' | tr '\n' ' ')
+    if [ -n "$OPEN_PR_NUMBERS" ] && [ -f "$STATE_FILE" ]; then
+        jq --arg open_list "$OPEN_PR_NUMBERS" 'with_entries(select(.key | . as $k | ($open_list | split(" ") | index($k)) != null))' "$STATE_FILE" > "${STATE_FILE}.tmp"
+        mv "${STATE_FILE}.tmp" "$STATE_FILE"
+    fi
+
     # Compile the active scanning queue list dynamically into a JSON array
     # Filters out both blocked authors AND the active bot's own self pull requests
     QUEUE_JSON=$(echo "$PRS_JSON" | jq -c --arg blocked "$BLOCKED_AUTHORS" --arg bot "$BOT_USERNAME" '
