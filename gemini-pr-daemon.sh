@@ -233,6 +233,71 @@ while true; do
             continue
         fi
 
+        # 3. Fetch Our Previous Review Feedback (to check if the new commit actually addresses it)
+        # Binds strictly to your active account username, completely ignoring other reviewer's comments!
+        echo "   🔍 Loading previous review feedback posted by bot ([at]$BOT_USERNAME)..."
+        BOT_PREVIOUS_FEEDBACK=""
+        if [ -n "$BOT_USERNAME" ]; then
+            BOT_PREVIOUS_FEEDBACK=$(gh pr view "$PR_NUMBER" --json reviews --jq '.reviews[] | select(.author.login == "'"$BOT_USERNAME"'") | .body' 2>/dev/null || true)
+        fi
+        
+        # Replace '@' with ' [at] ' to prevent gemini-cli from parsing it as a file-loading directive
+        BOT_PREVIOUS_FEEDBACK=$(echo "$BOT_PREVIOUS_FEEDBACK" | sed 's/@/ [at] /g')
+
+        # ----------------------------------------------------------------------
+        # Restriction 2c: Surgical Re-Review Gating (Filter Unrelated Commit Activity)
+        # ----------------------------------------------------------------------
+        if [ "$LAST_STATUS" == "changes_requested" ] && [ -n "$BOT_PREVIOUS_FEEDBACK" ]; then
+            # 1. Parse your previous review feedback markdown and extract all flagged files/extensions
+            FLAGGED_FILES=$(echo "$BOT_PREVIOUS_FEEDBACK" | grep -o -E '[a-zA-Z0-9_\/\.\-]+\.(java|tsx|ts|jrxml|sql|sh|yml|xml)' | sort -u | tr '\n' ' ')
+            
+            # 2. Check if the new commits actually touched any of these flagged files
+            NEW_COMMITS_TOUCHED_FEEDBACK=false
+            if [ "$HEAD_SHA" != "$LAST_SHA" ] && [ "$LAST_SHA" != "none" ]; then
+                # Get the list of all files modified in the new commits since our last review
+                NEW_CHANGES_FILES=$(git diff --name-only "$LAST_SHA"..."$HEAD_SHA" 2>/dev/null || true)
+                for change_file in $NEW_CHANGES_FILES; do
+                    base_change=$(basename "$change_file")
+                    for flagged_file in $FLAGGED_FILES; do
+                        base_flagged=$(basename "$flagged_file")
+                        if [ "$base_change" == "$base_flagged" ]; then
+                            NEW_COMMITS_TOUCHED_FEEDBACK=true
+                            break 2
+                        fi
+                    done
+                done
+            fi
+
+            # 3. Check if the owner's new comments reference your feedback or state a fix
+            NEW_COMMENTS_TOUCHED_FEEDBACK=false
+            if [ "$COMMENTS_HASH" != "$LAST_HASH" ] && [ "$LAST_HASH" != "none" ]; then
+                # Check for standard resolution keywords
+                for word in fixed resolved addressed corrected updated implemented done re-review rereview "check status"; do
+                    if echo "$OWNER_COMMENTS" | grep -iq "$word"; then
+                        NEW_COMMENTS_TOUCHED_FEEDBACK=true
+                        break
+                    fi
+                done
+                # Check if their comments explicitly mention any of our flagged files
+                for file in $FLAGGED_FILES; do
+                    base_file=$(basename "$file")
+                    if echo "$OWNER_COMMENTS" | grep -iq "$base_file"; then
+                        NEW_COMMENTS_TOUCHED_FEEDBACK=true
+                        break
+                    fi
+                done
+            fi
+
+            # 4. If neither the commits nor the comments touch or address your feedback, SKIP re-reviewing!
+            # Keeps the changes_requested status, saves the new SHA/Hash to prevent loops, and skips safely.
+            if [ "$NEW_COMMITS_TOUCHED_FEEDBACK" == "false" ] && [ "$NEW_COMMENTS_TOUCHED_FEEDBACK" == "false" ]; then
+                echo "   ⏭️  Skipping PR #$PR_NUMBER: New commits/comments do not reference or address your previous feedback."
+                jq '. + { "'"$PR_NUMBER"'": { "last_reviewed_sha": "'"$HEAD_SHA"'", "last_comments_hash": "'"$COMMENTS_HASH"'", "status": "changes_requested" } }' "$STATE_FILE" > "${STATE_FILE}.tmp"
+                mv "${STATE_FILE}.tmp" "$STATE_FILE"
+                continue
+            fi
+        fi
+
         echo "📌 PR #$PR_NUMBER from @$AUTHOR has new activity (Commit: $HEAD_SHA, Comment Hash: $COMMENTS_HASH). Starting review..."
         echo "{ \"status\": \"reviewing\", \"current_pr\": \"$PR_NUMBER\", \"active_repo\": \"$REPO_NAME\", \"updated_at\": \"$(date '+%Y-%m-%d %H:%M:%S')\", \"queue\": $QUEUE_JSON }" > "$ACTIVE_STATE_FILE"
 
@@ -276,16 +341,7 @@ $OWNER_COMMENTS
 "
         fi
 
-        # 6. Fetch Our Previous Review Feedback (to check if the new commit actually addresses it)
-        echo "   🔍 Loading previous review feedback posted by bot ([at]$BOT_USERNAME)..."
-        BOT_PREVIOUS_FEEDBACK=""
-        if [ -n "$BOT_USERNAME" ]; then
-            BOT_PREVIOUS_FEEDBACK=$(gh pr view "$PR_NUMBER" --json reviews --jq '.reviews[] | select(.author.login == "'"$BOT_USERNAME"'") | .body' 2>/dev/null || true)
-        fi
-        
-        # Replace '@' with ' [at] ' to prevent gemini-cli from parsing it as a file-loading directive
-        BOT_PREVIOUS_FEEDBACK=$(echo "$BOT_PREVIOUS_FEEDBACK" | sed 's/@/ [at] /g')
-
+        # 6. Setup Re-Review system prompt overrides if in verification state
         PREVIOUS_FEEDBACK_PROMPT=""
         RE_REVIEW_INSTRUCTION=""
         if [ -n "$BOT_PREVIOUS_FEEDBACK" ]; then
@@ -294,7 +350,6 @@ $OWNER_COMMENTS
 $BOT_PREVIOUS_FEEDBACK
 --- END OF PREVIOUS FEEDBACK ---
 "
-            # If the previous scan status was 'changes_requested', force the AI into Verification-Only Mode
             if [ "$LAST_STATUS" == "changes_requested" ]; then
                 RE_REVIEW_INSTRUCTION="⚠️ CRITICAL RE-REVIEW VERIFICATION MODE:
 This is a follow-up review. The PR previously had changes requested. 
