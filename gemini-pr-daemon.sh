@@ -204,9 +204,17 @@ while true; do
             continue
         fi
 
-        # Restriction 2a: Once a PR has been approved, lock it in the approved state and stop reviewing it completely
+        # Restriction 2a: If the PR is already APPROVED (either locally or directly on GitHub), bypass immediately
         LAST_STATUS=$(jq -r '.["'"$PR_NUMBER"'"].status // "none"' "$STATE_FILE")
-        if [ "$LAST_STATUS" == "approved" ]; then
+        REVIEW_DECISION=$(gh pr view "$PR_NUMBER" --json reviewDecision --jq .reviewDecision 2>/dev/null || echo "none")
+        
+        if [ "$REVIEW_DECISION" == "APPROVED" ] || [ "$LAST_STATUS" == "approved" ]; then
+            # Synchronize local database with the remote GitHub approval state if not already synced
+            if [ "$LAST_STATUS" != "approved" ]; then
+                jq '. + { "'"$PR_NUMBER"'": { "last_reviewed_sha": "'"$HEAD_SHA"'", "last_comments_hash": "github_approval", "status": "approved" } }' "$STATE_FILE" > "${STATE_FILE}.tmp"
+                mv "${STATE_FILE}.tmp" "$STATE_FILE"
+                echo "   ✅ PR #$PR_NUMBER is already APPROVED on GitHub. Synced local state database."
+            fi
             continue
         fi
 
