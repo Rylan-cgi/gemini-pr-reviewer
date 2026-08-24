@@ -208,6 +208,9 @@ while true; do
         echo "   💬 Loading comment history from PR owner @$AUTHOR..."
         OWNER_COMMENTS=$(gh pr view "$PR_NUMBER" --json comments --jq '.comments[] | select(.author.login == "'"$AUTHOR"'") | "[Comment by @'"$AUTHOR"']: " + .body' 2>/dev/null || true)
         
+        # Replace '@' with ' [at] ' to prevent gemini-cli from parsing it as a file-loading directive
+        OWNER_COMMENTS=$(echo "$OWNER_COMMENTS" | sed 's/@/ [at] /g')
+
         # Hash the owner comments to detect new comment activity without new commits
         if command -v md5sum &> /dev/null; then
             COMMENTS_HASH=$(echo "$OWNER_COMMENTS" | md5sum | awk '{print $1}')
@@ -258,18 +261,21 @@ while true; do
         # 5. Fetch PR Owner Comments for Context
         CONTEXT_PROMPT=""
         if [ -n "$OWNER_COMMENTS" ]; then
-            CONTEXT_PROMPT="Note: The PR owner (@$AUTHOR) has commented the following explanations and replies on this PR. Use this context to see if they have answered your previous feedback or provided specific rationales for their code choices:
+            CONTEXT_PROMPT="Note: The PR owner ([at]$AUTHOR) has commented the following explanations and replies on this PR. Use this context to see if they have answered your previous feedback or provided specific rationales for their code choices:
 $OWNER_COMMENTS
 "
         fi
 
         # 6. Fetch Our Previous Review Feedback (to check if the new commit actually addresses it)
-        echo "   🔍 Loading previous review feedback posted by bot (@$BOT_USERNAME)..."
+        echo "   🔍 Loading previous review feedback posted by bot ([at]$BOT_USERNAME)..."
         BOT_PREVIOUS_FEEDBACK=""
         if [ -n "$BOT_USERNAME" ]; then
             BOT_PREVIOUS_FEEDBACK=$(gh pr view "$PR_NUMBER" --json reviews --jq '.reviews[] | select(.author.login == "'"$BOT_USERNAME"'") | .body' 2>/dev/null || true)
         fi
         
+        # Replace '@' with ' [at] ' to prevent gemini-cli from parsing it as a file-loading directive
+        BOT_PREVIOUS_FEEDBACK=$(echo "$BOT_PREVIOUS_FEEDBACK" | sed 's/@/ [at] /g')
+
         PREVIOUS_FEEDBACK_PROMPT=""
         RE_REVIEW_INSTRUCTION=""
         if [ -n "$BOT_PREVIOUS_FEEDBACK" ]; then
@@ -288,6 +294,8 @@ Your SOLE and exclusive objective in this session is to verify if the developer 
 - If the original defects (e.g. the schedule2.jrxml page footer) are resolved in the new diff, you MUST output the verdict APPROVED.
 - If the original defects are still outstanding, output CHANGES_REQUESTED and list ONLY the unresolved original defects from the Previous Feedback.
 "
+                # Replace '@' with ' [at] ' to prevent gemini-cli from parsing it as a file-loading directive
+                RE_REVIEW_INSTRUCTION=$(echo "$RE_REVIEW_INSTRUCTION" | sed 's/@/ [at] /g')
             fi
         fi
 
@@ -299,6 +307,8 @@ Your SOLE and exclusive objective in this session is to verify if the developer 
 $(cat "$SCRIPT_DIR/review-format.md")
 --- END OF LAYOUT TEMPLATE ---
 "
+            # Replace '@' with ' [at] ' to prevent gemini-cli from parsing it as a file-loading directive
+            FORMAT_INSTRUCTION=$(echo "$FORMAT_INSTRUCTION" | sed 's/@/ [at] /g')
         fi
 
         # 7. Execute Headless Gemini Review
@@ -307,6 +317,7 @@ $(cat "$SCRIPT_DIR/review-format.md")
 
         # Ask the model to review and supply a machine-parseable [VERDICT] line at the end
         # We redirect the filtered diff into standard input of gemini to bypass ARG_MAX limitations completely
+        # Note: The prompt instructions are fully sanitized of direct '@' symbols
         gemini --yolo -p "You are an expert software engineer and automated code reviewer. Review the following code diff passed via standard input for pull request #$PR_NUMBER. Look for critical bugs, memory leaks, performance issues, logic flaws, or type-safety bypasses.
 
 Your review must critically analyze the code changes from three specialized lenses:
