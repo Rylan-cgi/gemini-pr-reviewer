@@ -149,7 +149,7 @@ while true; do
     fi
 
     # Identify bot/our own active GitHub user name (using the robust API call)
-    BOT_USERNAME=$(gh api user --jq .login 2>/dev/null || echo "Rylan-cgi")
+    BOT_USERNAME=$(gh api user --jq .login 2>/dev/null || echo "")
 
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🔍 Scanning open PRs in $REPO_NAME..."
     echo "{ \"status\": \"scanning\", \"current_pr\": \"none\", \"active_repo\": \"$REPO_NAME\", \"updated_at\": \"$(date '+%Y-%m-%d %H:%M:%S')\", \"queue\": [] }" > "$ACTIVE_STATE_FILE"
@@ -178,7 +178,7 @@ while true; do
         HEAD_SHA=$(echo "$pr_row" | jq -r '.headRefOid')
 
         # Restriction 1a: Do NOT attempt to review your own pull requests (GitHub API restriction)
-        if [ "$AUTHOR" == "$BOT_USERNAME" ]; then
+        if [ -n "$BOT_USERNAME" ] && [ "$AUTHOR" == "$BOT_USERNAME" ]; then
             continue
         fi
 
@@ -248,7 +248,10 @@ $OWNER_COMMENTS
 
         # 6. Fetch Our Previous Review Feedback (to check if the new commit actually addresses it)
         echo "   🔍 Loading previous review feedback posted by bot (@$BOT_USERNAME)..."
-        BOT_PREVIOUS_FEEDBACK=$(gh pr view "$PR_NUMBER" --json reviews --jq '.reviews[] | select(.author.login == "'"$BOT_USERNAME"'") | .body' 2>/dev/null || true)
+        BOT_PREVIOUS_FEEDBACK=""
+        if [ -n "$BOT_USERNAME" ]; then
+            BOT_PREVIOUS_FEEDBACK=$(gh pr view "$PR_NUMBER" --json reviews --jq '.reviews[] | select(.author.login == "'"$BOT_USERNAME"'") | .body' 2>/dev/null || true)
+        fi
         
         PREVIOUS_FEEDBACK_PROMPT=""
         if [ -n "$BOT_PREVIOUS_FEEDBACK" ]; then
