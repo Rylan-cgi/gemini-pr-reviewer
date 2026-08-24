@@ -271,18 +271,24 @@ $OWNER_COMMENTS
         fi
         
         PREVIOUS_FEEDBACK_PROMPT=""
+        RE_REVIEW_INSTRUCTION=""
         if [ -n "$BOT_PREVIOUS_FEEDBACK" ]; then
             PREVIOUS_FEEDBACK_PROMPT="Note: You have already reviewed this PR previously and requested specific changes. Here is the feedback you submitted:
 --- START OF PREVIOUS FEEDBACK ---
 $BOT_PREVIOUS_FEEDBACK
 --- END OF PREVIOUS FEEDBACK ---
-
-Your task is to critically analyze the new PR diff and any owner comments to determine:
-1. Did the developer actually address and fix the previously requested changes/defects?
-2. If they pushed new commits, are those commits related or unrelated to the requested changes?
-3. If they pushed an unrelated commit, or if the previously requested changes are still unresolved (e.g. they did not edit the highlighted files/lines or the defect remains), you must NOT approve the PR. Set your verdict to CHANGES_REQUESTED and explain that the new commits are unrelated or that the requested changes are still outstanding.
-4. Only set your verdict to APPROVED if all previously requested changes are genuinely and correctly resolved, and no new critical defects are introduced.
 "
+            # If the previous scan status was 'changes_requested', force the AI into Verification-Only Mode
+            if [ "$LAST_STATUS" == "changes_requested" ]; then
+                RE_REVIEW_INSTRUCTION="⚠️ CRITICAL RE-REVIEW VERIFICATION MODE:
+This is a follow-up review. The PR previously had changes requested. 
+Your SOLE and exclusive objective in this session is to verify if the developer has successfully fixed the specific defects listed in the 'Previous Feedback' above.
+- DO NOT perform a brand-new code review from scratch.
+- DO NOT scan for new, unrelated bugs or expand the scope of the review.
+- If the original defects (e.g. the schedule2.jrxml page footer) are resolved in the new diff, you MUST output the verdict APPROVED.
+- If the original defects are still outstanding, output CHANGES_REQUESTED and list ONLY the unresolved original defects from the Previous Feedback.
+"
+            fi
         fi
 
         # Load layout formatting instruction dynamically
@@ -313,7 +319,8 @@ If there are still critical bugs, logic flaws, or required code adjustments, app
 [VERDICT]: CHANGES_REQUESTED
 
 $CONTEXT_PROMPT
-$PREVIOUS_FEEDBACK_PROMPT" < /tmp/pr_filtered.diff > /tmp/pr_review_result.md
+$PREVIOUS_FEEDBACK_PROMPT
+$RE_REVIEW_INSTRUCTION" < /tmp/pr_filtered.diff > /tmp/pr_review_result.md
 
         # Clean the verdict marker from the user-facing report and extract the status
         if grep -q "\[VERDICT\]: APPROVED" /tmp/pr_review_result.md; then
