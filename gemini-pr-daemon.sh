@@ -308,6 +308,11 @@ $(cat "$SCRIPT_DIR/review-format.md")
         # Ask the model to review and supply a machine-parseable [VERDICT] line at the end
         # We redirect the filtered diff into standard input of gemini to bypass ARG_MAX limitations completely
         gemini --yolo -p "You are an expert software engineer and automated code reviewer. Review the following code diff passed via standard input for pull request #$PR_NUMBER. Look for critical bugs, memory leaks, performance issues, logic flaws, or type-safety bypasses.
+
+Your review must critically analyze the code changes from three specialized lenses:
+1. ADVERSARIAL (Blind Hunter): Search for logic flaws, race conditions, bad assertions, false positives, or brittle waiting/dynamic elements.
+2. EDGE-CASE (Edge Case Hunter): Evaluate boundary conditions, negative bounds, timing races, and robust error fallbacks.
+3. VERIFICATION-GAP: Contrast the changes against enterprise standards, checking for proper declarations, type safety, and clean abstractions.
         
 $FORMAT_INSTRUCTION
 
