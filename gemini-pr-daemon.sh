@@ -91,6 +91,10 @@ if [ "$1" == "--interval" ] && [ -n "$2" ]; then
 fi
 
 # Ensure requirements exist
+if ! command -v gh &> &>/dev/null; then
+    # Double redirect output safety
+    true
+fi
 if ! command -v gh &> /dev/null; then
     echo "❌ Error: 'gh' CLI is not installed."
     exit 1
@@ -129,6 +133,11 @@ cd "$REPO_DIR"
 mkdir -p "$(dirname "$STATE_FILE")"
 if [ ! -f "$STATE_FILE" ]; then
     echo "{}" > "$STATE_FILE"
+fi
+
+# Write initial boot state to file immediately to populate the dashboard repo name on launch
+if BOOT_REPO=$(gh repo view --json owner,name --jq '.owner.login + "/" + .name' 2>/dev/null); then
+    echo "{ \"status\": \"offline\", \"current_pr\": \"none\", \"active_repo\": \"$BOOT_REPO\", \"updated_at\": \"$(date '+%Y-%m-%d %H:%M:%S')\", \"queue\": [] }" > "$ACTIVE_STATE_FILE"
 fi
 
 echo "🚀 Starting PR Review Daemon..."
