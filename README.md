@@ -12,6 +12,7 @@ This tool runs **locally on your machine**, leaving your codebase completely unt
 gemini-pr-reviewer/
 ├── config.env              # ⚙️ All custom user configurations
 ├── gemini-pr-daemon.sh     # 🚀 The main execution daemon script
+├── gemini-pr-dashboard.py  # 📊 Dynamic real-time terminal TUI dashboard
 ├── review-format.md        # 🎨 Enforced pull request layout preference
 └── README.md               # 📖 This documentation file
 ```
@@ -28,6 +29,7 @@ Before starting the daemon, ensure you have the following CLI utilities installe
    * **Fedora / CentOS / RHEL:** `sudo dnf install -y jq`
    * **Arch Linux:** `sudo pacman -S jq`
 4. **Desktop Notifier (`notify-send`)** — GNOME/Linux standard for system notifications (installed by default in most desktop environments).
+5. **Python 3 (`python3`)** — for running the terminal TUI dashboard (installed by default).
 
 Ensure your terminal environment has your API key exported (if not using enterprise SSO):
 ```bash
@@ -82,6 +84,20 @@ tail -f ~/gemini-pr-daemon.log
 ```bash
 kill $(pgrep -f "gemini-pr-reviewer/gemini-pr-daemon.sh")
 ```
+
+---
+
+## 📊 Live Terminal TUI Dashboard
+
+To see a beautiful real-time visualization of the review daemon's state, active queue, and reviewed history without looking at raw text log streams, open a **separate terminal pane or window** (e.g. inside `tmux` or side-by-side terminal splits) and run:
+
+```bash
+/home/rylanevans/gemini-pr-reviewer/gemini-pr-dashboard.py
+```
+*   **Live Scanning Queue:** Shows which PR is currently being reviewed and lists remaining PRs queued in FIFO order.
+*   **Real-time Daemon State:** Dynamic text color updates indicating `Idle 💤`, `Scanning 🔍`, or `Reviewing 🤖`.
+*   **Reviewed History Table:** An aligned database grid of all recently approved, changes-requested, and skipped PR commits.
+*   **Flicker-free updates:** Polled and refreshed smoothly every 2 seconds.
 
 ---
 

@@ -40,6 +40,10 @@ else
     ENTERPRISE_AUTH=false
 fi
 
+# Active Run-State path definitions for the TUI dashboard
+ACTIVE_STATE_FILE="/home/rylanevans/.gemini/tmp/ilcr-pr-active-state.json"
+mkdir -p "$(dirname "$ACTIVE_STATE_FILE")"
+
 # Author restriction filter
 is_allowed_author() {
     local author="$1"
@@ -110,6 +114,7 @@ while true; do
     # Get active repo name
     if ! REPO_NAME=$(gh repo view --json owner,name --jq '.owner.login + "/" + .name' 2>/dev/null); then
         echo "❌ Error: Failed to query repository remote info in $REPO_DIR. Retrying in $POLL_INTERVAL seconds..."
+        echo "{ \"status\": \"offline\", \"current_pr\": \"none\", \"active_repo\": \"unknown\", \"updated_at\": \"$(date '+%Y-%m-%d %H:%M:%S')\", \"queue\": [] }" > "$ACTIVE_STATE_FILE"
         sleep "$POLL_INTERVAL"
         continue
     fi
@@ -118,6 +123,7 @@ while true; do
     BOT_USERNAME=$(gh auth status --active -t 2>/dev/null | grep "account" | sed 's/.*account \([^ ]*\).*/\1/' || echo "Rylan-cgi")
 
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🔍 Scanning open PRs in $REPO_NAME..."
+    echo "{ \"status\": \"scanning\", \"current_pr\": \"none\", \"active_repo\": \"$REPO_NAME\", \"updated_at\": \"$(date '+%Y-%m-%d %H:%M:%S')\", \"queue\": [] }" > "$ACTIVE_STATE_FILE"
 
     # Retrieve all open PRs
     if ! PRS_JSON=$(gh pr list --state open --json number,author,headRefOid --limit 50 2>/dev/null); then
@@ -125,6 +131,9 @@ while true; do
         sleep "$POLL_INTERVAL"
         continue
     fi
+
+    # Compile the active scanning queue list dynamically into a JSON array for the dashboard
+    QUEUE_JSON=$(echo "$PRS_JSON" | jq -c '[.[] | select(.author.login == "SScholefield" or .author.login == "gpascucci") | {number: .number, author: .author.login, sha: .headRefOid}]')
 
     # Read each PR from JSON
     echo "$PRS_JSON" | jq -c '.[]' | while read -r pr_row; do
@@ -159,6 +168,7 @@ while true; do
         fi
 
         echo "📌 PR #$PR_NUMBER from @$AUTHOR has new activity (Commit: $HEAD_SHA, Comment Hash: $COMMENTS_HASH). Starting review..."
+        echo "{ \"status\": \"reviewing\", \"current_pr\": \"$PR_NUMBER\", \"active_repo\": \"$REPO_NAME\", \"updated_at\": \"$(date '+%Y-%m-%d %H:%M:%S')\", \"queue\": $QUEUE_JSON }" > "$ACTIVE_STATE_FILE"
 
         # 3. Retrieve remote diff (remotely, never modifies local workspace files)
         gh pr diff "$PR_NUMBER" > /tmp/pr_all.diff
@@ -304,6 +314,9 @@ $PREVIOUS_FEEDBACK_PROMPT" < /tmp/pr_filtered.diff > /tmp/pr_review_result.md
             echo "   ℹ️ PR #$PR_NUMBER state was not updated so you can re-run the review."
         fi
     done
+
+    # Reset active status JSON to sleeping between scan loops
+    echo "{ \"status\": \"sleeping\", \"current_pr\": \"none\", \"active_repo\": \"$REPO_NAME\", \"updated_at\": \"$(date '+%Y-%m-%d %H:%M:%S')\", \"queue\": [] }" > "$ACTIVE_STATE_FILE"
 
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 😴 Scan complete. Sleeping for $POLL_INTERVAL seconds..."
     sleep "$POLL_INTERVAL"
