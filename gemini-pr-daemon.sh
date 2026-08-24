@@ -258,6 +258,11 @@ while true; do
             continue
         fi
 
+        # Sanitizing the diff: Replace all '@' symbols in the diff file with ' [at] '
+        # This completely prevents gemini-cli from parsing Java annotations (e.g. @Test, @Min, @Valid) 
+        # as active file loading triggers, stopping context pollution and false positives.
+        sed -i 's/@/ [at] /g' /tmp/pr_filtered.diff
+
         # 5. Fetch PR Owner Comments for Context
         CONTEXT_PROMPT=""
         if [ -n "$OWNER_COMMENTS" ]; then
@@ -317,8 +322,11 @@ $(cat "$SCRIPT_DIR/review-format.md")
 
         # Ask the model to review and supply a machine-parseable [VERDICT] line at the end
         # We redirect the filtered diff into standard input of gemini to bypass ARG_MAX limitations completely
-        # Note: The prompt instructions are fully sanitized of direct '@' symbols
+        # Note: The prompt instructions and the standard input diff are fully sanitized of direct '@' symbols.
+        # We explicitly inform the model about the '[at]' sanitation so it analyzes it perfectly.
         gemini --yolo -p "You are an expert software engineer and automated code reviewer. Review the following code diff passed via standard input for pull request #$PR_NUMBER. Look for critical bugs, memory leaks, performance issues, logic flaws, or type-safety bypasses.
+
+Note: For technical parsing safety, all '@' characters in the prompt, context, and standard input diff have been sanitized to '[at]'. Please interpret '[at]Annotation' as the standard '@Annotation' (such as '[at]Test' as '@Test', '[at]Override' as '@Override', and '[at]Min' as '@Min') in your code analysis.
 
 Your review must critically analyze the code changes from three specialized lenses:
 1. ADVERSARIAL (Blind Hunter): Search for logic flaws, race conditions, bad assertions, false positives, or brittle waiting/dynamic elements.
@@ -349,10 +357,12 @@ $RE_REVIEW_INSTRUCTION" < /tmp/pr_filtered.diff > /tmp/pr_review_result.md
 
         # Post-process the file to remove any internal CLI tool announcements,
         # thought preambles, or conversational noise (e.g. "I will run...", "I am...")
+        # We also convert '[at]' back to '@' in the output report to ensure pristine formatting on GitHub!
         sed -i '/^I will/d' /tmp/pr_review_result.md
         sed -i '/^I am/d' /tmp/pr_review_result.md
         sed -i '/^I have/d' /tmp/pr_review_result.md
         sed -i '/\[VERDICT\]:/d' /tmp/pr_review_result.md
+        sed -i 's/\[at\]/@/g' /tmp/pr_review_result.md
 
         # Trigger Linux Desktop Notification toast (if notify-send is available)
         if command -v notify-send &> /dev/null; then
