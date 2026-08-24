@@ -148,8 +148,8 @@ while true; do
         continue
     fi
 
-    # Identify bot/our own active GitHub user name (using a robust sed parser)
-    BOT_USERNAME=$(gh auth status --active -t 2>/dev/null | grep "account" | sed 's/.*account \([^ ]*\).*/\1/' || echo "Rylan-cgi")
+    # Identify bot/our own active GitHub user name (using the robust API call)
+    BOT_USERNAME=$(gh api user --jq .login 2>/dev/null || echo "Rylan-cgi")
 
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🔍 Scanning open PRs in $REPO_NAME..."
     echo "{ \"status\": \"scanning\", \"current_pr\": \"none\", \"active_repo\": \"$REPO_NAME\", \"updated_at\": \"$(date '+%Y-%m-%d %H:%M:%S')\", \"queue\": [] }" > "$ACTIVE_STATE_FILE"
