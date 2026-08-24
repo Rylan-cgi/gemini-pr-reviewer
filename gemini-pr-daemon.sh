@@ -204,6 +204,12 @@ while true; do
             continue
         fi
 
+        # Restriction 2a: Once a PR has been approved, lock it in the approved state and stop reviewing it completely
+        LAST_STATUS=$(jq -r '.["'"$PR_NUMBER"'"].status // "none"' "$STATE_FILE")
+        if [ "$LAST_STATUS" == "approved" ]; then
+            continue
+        fi
+
         # 2. Fetch PR Owner Comments for Context and Comment Hash Check
         echo "   💬 Loading comment history from PR owner @$AUTHOR..."
         OWNER_COMMENTS=$(gh pr view "$PR_NUMBER" --json comments --jq '.comments[] | select(.author.login == "'"$AUTHOR"'") | "[Comment by @'"$AUTHOR"']: " + .body' 2>/dev/null || true)
@@ -218,10 +224,9 @@ while true; do
             COMMENTS_HASH=$(echo "$OWNER_COMMENTS" | cksum | awk '{print $1}')
         fi
 
-        # Restriction 2: Check state database to prevent redundant scans on identical commit AND identical comments
+        # Restriction 2b: Check state database to prevent redundant scans on identical commit AND identical comments
         LAST_SHA=$(jq -r '.["'"$PR_NUMBER"'"].last_reviewed_sha // "none"' "$STATE_FILE")
         LAST_HASH=$(jq -r '.["'"$PR_NUMBER"'"].last_comments_hash // "none"' "$STATE_FILE")
-        LAST_STATUS=$(jq -r '.["'"$PR_NUMBER"'"].status // "none"' "$STATE_FILE")
 
         if [ "$HEAD_SHA" == "$LAST_SHA" ] && [ "$COMMENTS_HASH" == "$LAST_HASH" ]; then
             # Already reviewed this specific commit and comments state. Skip.
