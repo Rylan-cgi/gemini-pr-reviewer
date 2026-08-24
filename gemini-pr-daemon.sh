@@ -26,18 +26,47 @@ fi
 
 # Load configurations from relative path
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-if [ -f "$SCRIPT_DIR/config.env" ]; then
-    source "$SCRIPT_DIR/config.env"
-else
-    # Safety fallbacks
-    REPO_DIR="/home/rylanevans/ilcr/ilcr-bmad/nr-ilcr"
-    POLL_INTERVAL=300
-    REVIEW_MODE="manual"
-    STATE_FILE="/home/rylanevans/.gemini/tmp/ilcr-pr-reviews.json"
-    MAX_DIFF_LINES=2000
-    IN_SCOPE_PATHS="backend/src/|frontend/src/"
-    BLOCKED_AUTHORS="dependabot dependabot[bot] renovate renovate[bot]"
-    ENTERPRISE_AUTH=false
+if [ ! -f "$SCRIPT_DIR/config.env" ]; then
+    echo "❌ Error: Configuration file 'config.env' is missing inside $SCRIPT_DIR."
+    echo "   Please restore or copy it from your git repository history."
+    exit 1
+fi
+
+# Source configurations
+source "$SCRIPT_DIR/config.env"
+
+# Validate mandatory configuration variables (Fail-Fast Gate)
+if [ -z "${REPO_DIR:-}" ]; then
+    echo "❌ Error: REPO_DIR is not defined or is empty in config.env."
+    exit 1
+fi
+if [ -z "${POLL_INTERVAL:-}" ]; then
+    echo "❌ Error: POLL_INTERVAL is not defined or is empty in config.env."
+    exit 1
+fi
+if [ -z "${REVIEW_MODE:-}" ]; then
+    echo "❌ Error: REVIEW_MODE is not defined or is empty in config.env."
+    exit 1
+fi
+if [ -z "${STATE_FILE:-}" ]; then
+    echo "❌ Error: STATE_FILE is not defined or is empty in config.env."
+    exit 1
+fi
+if [ -z "${MAX_DIFF_LINES:-}" ]; then
+    echo "❌ Error: MAX_DIFF_LINES is not defined or is empty in config.env."
+    exit 1
+fi
+if [ -z "${IN_SCOPE_PATHS:-}" ]; then
+    echo "❌ Error: IN_SCOPE_PATHS is not defined or is empty in config.env."
+    exit 1
+fi
+if [ -z "${BLOCKED_AUTHORS:-}" ]; then
+    echo "❌ Error: BLOCKED_AUTHORS is not defined or is empty in config.env."
+    exit 1
+fi
+if [ -z "${ENTERPRISE_AUTH:-}" ]; then
+    echo "❌ Error: ENTERPRISE_AUTH is not defined or is empty in config.env."
+    exit 1
 fi
 
 # Active Run-State path definitions for the TUI dashboard
@@ -80,7 +109,7 @@ if [ "$ENTERPRISE_AUTH" == "true" ] || [ "$ENTERPRISE_AUTH" == "1" ]; then
     unset GEMINI_API_KEY
     unset GOOGLE_API_KEY
 else
-    if [ -z "$GEMINI_API_KEY" ]; then
+    if [ -z "${GEMINI_API_KEY:-}" ]; then
         echo "⚠️ Warning: GEMINI_API_KEY is not set in environment."
         echo "   If using corporate/enterprise SSO, set ENTERPRISE_AUTH=true in config.env to suppress this."
     fi
