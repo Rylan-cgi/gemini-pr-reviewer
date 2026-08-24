@@ -180,6 +180,10 @@ while true; do
 
         # Restriction 1a: Do NOT attempt to review your own pull requests (GitHub API restriction)
         if [ -n "$BOT_USERNAME" ] && [ "$AUTHOR" == "$BOT_USERNAME" ]; then
+            echo "   ⏭️  Skipping PR #$PR_NUMBER: Author is yourself (@$BOT_USERNAME). GitHub does not allow self-reviews."
+            # Save as skipped in state database so we don't query it again redundantly
+            jq '. + { "'"$PR_NUMBER"'": { "last_reviewed_sha": "'"$HEAD_SHA"'", "last_comments_hash": "self_review", "status": "skipped" } }' "$STATE_FILE" > "${STATE_FILE}.tmp"
+            mv "${STATE_FILE}.tmp" "$STATE_FILE"
             continue
         fi
 
