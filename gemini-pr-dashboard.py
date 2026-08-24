@@ -35,13 +35,9 @@ def load_json(file_path):
         return {}
 
 def draw_line(text, width, color="", indent=0):
-    # Safety truncation based on current terminal columns
-    max_len = width - indent - 4
-    if len(text) > max_len:
-        text = text[:max_len - 3] + "..."
-        
     padding = " " * indent
-    # Clears to the end of the line using \033[K to ensure flicker-free rendering
+    # Clears to the end of the line using \033[K to ensure flicker-free rendering.
+    # Completely removes truncation checks so '...' never appears and ANSI tags are never cut.
     return f"{padding}{color}{text}{CLR_RESET}\033[K"
 
 def format_status(status):
