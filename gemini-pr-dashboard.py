@@ -18,6 +18,9 @@ CLR_RED = "\033[91m"
 CLR_BOLD = "\033[1m"
 CLR_RESET = "\033[0m"
 
+# Track terminal size to handle resizes cleanly
+LAST_COLS = 0
+
 def reset_cursor():
     # Move terminal cursor back to top-left (row 1, col 1) without clearing screen.
     # This prevents the scrollbar from jumping and eliminates terminal text flickering.
@@ -32,27 +35,54 @@ def load_json(file_path):
     except Exception:
         return {}
 
-def draw_box_line(text, width=78, align="left", color=""):
+def draw_box_line(text, width, align="left", color=""):
     inner_width = width - 4
+    
+    # Safety truncation: if text exceeds the current box width, truncate with '...'
+    # to completely prevent line-wrapping or layout shifts.
+    if len(text) > inner_width:
+        text = text[:inner_width - 3] + "..."
+        
     if align == "center":
         padding = (inner_width - len(text)) // 2
         line = " " * padding + text + " " * (inner_width - len(text) - padding)
     else:
         line = " " + text + " " * (inner_width - len(text) - 1)
+        
     # \033[K clears from cursor position to the end of the line.
-    # This wipes any old leftover text from previous ticks without visual flashing.
     return f"│ {color}{line}{CLR_RESET} │\033[K"
 
 def format_status(status):
     if status == "approved":
-        return f"{CLR_GREEN}✅ APPROVED{CLR_RESET}"
+        return f"{CLR_GREEN}APPROVED{CLR_RESET}"
     elif status == "changes_requested":
-        return f"{CLR_RED}🚨 CHANGES REQ{CLR_RESET}"
+        return f"{CLR_RED}CHANGES REQ{CLR_RESET}"
     elif status == "skipped":
-        return f"{CLR_YELLOW}⚠️  SKIPPED{CLR_RESET}"
+        return f"{CLR_YELLOW}SKIPPED{CLR_RESET}"
     return f"{CLR_BLUE}{status.upper()}{CLR_RESET}"
 
 def render_dashboard():
+    global LAST_COLS
+    
+    # 1. Dynamically detect the active terminal dimensions
+    try:
+        columns, lines = os.get_terminal_size()
+    except Exception:
+        columns = 80
+        lines = 24
+        
+    # Cap the box width at 80 characters for optimal aesthetics on wide monitors,
+    # but scale it down smoothly to fit narrow splits exactly.
+    width = min(80, columns - 1)
+    if width < 30:
+        width = 30 # absolute floor size for safety
+        
+    # If the user resizes or splits their terminal, clear the screen once
+    # to wipe out margin residues of previous dimensions.
+    if columns != LAST_COLS:
+        os.system('clear')
+        LAST_COLS = columns
+        
     # Keep terminal cursor at top-left
     reset_cursor()
     
@@ -66,7 +96,6 @@ def render_dashboard():
     updated_at = active.get("updated_at", "never")
     queue = active.get("queue", [])
 
-    width = 78
     # Clear-to-end of line is appended to borders to maintain consistent erasure
     border_top = "┌" + "─" * (width - 2) + "┐\033[K"
     border_bottom = "└" + "─" * (width - 2) + "┘\033[K"
@@ -109,7 +138,7 @@ def render_dashboard():
             
             # Highlight the currently active PR
             if str(pr_num) == str(current_pr) and daemon_status == "reviewing":
-                item_str = f"👉 [{idx+1}] PR #{pr_num} by @{author} (SHA: {sha}) [ACTIVE REVIEW]"
+                item_str = f"👉 [{idx+1}] PR #{pr_num} by @{author} (SHA: {sha}) [ACTIVE]"
                 item_color = CLR_BLUE + CLR_BOLD
             else:
                 item_str = f"   [{idx+1}] PR #{pr_num} by @{author} (SHA: {sha}) [QUEUED]"
