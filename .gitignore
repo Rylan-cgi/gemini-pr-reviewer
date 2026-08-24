@@ -1,0 +1,7 @@
+# Ignore local, private environment configurations
+config.env
+
+# Ignore temporary runtime output drafts
+/tmp/
+*.swp
+*.log

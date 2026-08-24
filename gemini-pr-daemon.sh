@@ -28,7 +28,8 @@ fi
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 if [ ! -f "$SCRIPT_DIR/config.env" ]; then
     echo "❌ Error: Configuration file 'config.env' is missing inside $SCRIPT_DIR."
-    echo "   Please restore or copy it from your git repository history."
+    echo "   Please initialize your local config from the template:"
+    echo "   cp $SCRIPT_DIR/config.env.example $SCRIPT_DIR/config.env"
     exit 1
 fi
 
