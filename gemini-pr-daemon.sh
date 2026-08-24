@@ -36,7 +36,7 @@ else
     STATE_FILE="/home/rylanevans/.gemini/tmp/ilcr-pr-reviews.json"
     MAX_DIFF_LINES=2000
     IN_SCOPE_PATHS="backend/src/|frontend/src/"
-    ALLOWED_AUTHORS="SScholefield gpascucci"
+    BLOCKED_AUTHORS="dependabot dependabot[bot] renovate renovate[bot]"
     ENTERPRISE_AUTH=false
 fi
 
@@ -44,15 +44,15 @@ fi
 ACTIVE_STATE_FILE="/home/rylanevans/.gemini/tmp/ilcr-pr-active-state.json"
 mkdir -p "$(dirname "$ACTIVE_STATE_FILE")"
 
-# Author restriction filter
-is_allowed_author() {
+# Author restriction filter (Blacklist)
+is_blocked_author() {
     local author="$1"
-    for allowed in $ALLOWED_AUTHORS; do
-        if [ "$author" == "$allowed" ]; then
-            return 0 # allowed
+    for blocked in $BLOCKED_AUTHORS; do
+        if [ "$author" == "$blocked" ]; then
+            return 0 # blocked
         fi
     done
-    return 1 # skipped
+    return 1 # not blocked (allowed)
 }
 
 # Parse custom interval override
@@ -106,7 +106,7 @@ echo "⚙️  Interval: $POLL_INTERVAL seconds"
 echo "⚙️  Repository: $REPO_DIR"
 echo "⚙️  Review Mode: $REVIEW_MODE (Interactive: $IS_INTERACTIVE)"
 echo "⚙️  State file: $STATE_FILE"
-echo "⚙️  Allowed authors: $ALLOWED_AUTHORS"
+echo "⚙️  Blocked authors: $BLOCKED_AUTHORS"
 echo "⚙️  Enterprise Authentication: ${ENTERPRISE_AUTH:-false}"
 echo "--------------------------------------------------"
 
@@ -132,8 +132,14 @@ while true; do
         continue
     fi
 
-    # Compile the active scanning queue list dynamically into a JSON array for the dashboard
-    QUEUE_JSON=$(echo "$PRS_JSON" | jq -c '[.[] | select(.author.login == "SScholefield" or .author.login == "gpascucci") | {number: .number, author: .author.login, sha: .headRefOid}]')
+    # Compile the active scanning queue list dynamically into a JSON array, filtering out blocked authors
+    QUEUE_JSON=$(echo "$PRS_JSON" | jq -c --arg blocked "$BLOCKED_AUTHORS" '
+      [
+        .[] | 
+        select(.author.login as $auth | ($blocked | split(" ") | index($auth)) == null) | 
+        {number: .number, author: .author.login, sha: .headRefOid}
+      ]
+    ')
 
     # Read each PR from JSON
     echo "$PRS_JSON" | jq -c '.[]' | while read -r pr_row; do
@@ -141,8 +147,8 @@ while true; do
         AUTHOR=$(echo "$pr_row" | jq -r '.author.login')
         HEAD_SHA=$(echo "$pr_row" | jq -r '.headRefOid')
 
-        # Restriction 1: Filter by specific target authors
-        if ! is_allowed_author "$AUTHOR"; then
+        # Restriction 1: Filter out blacklisted/blocked authors
+        if is_blocked_author "$AUTHOR"; then
             continue
         fi
 

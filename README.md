@@ -45,7 +45,7 @@ You can modify configurations on-the-fly without changing any code! Simply open 
 *   `POLL_INTERVAL`: The check frequency in seconds (default: `300` = 5 minutes).
 *   `MAX_DIFF_LINES`: Skips scans on massive pull requests (default: `10000` lines) to conserve API tokens and prevent crashes.
 *   `IN_SCOPE_PATHS`: A regex pattern representing source directories to check (default: `"backend/src/|frontend/src/|frontend/e2e/"`). Bypasses lockfiles, assets, layout files, or documentation.
-*   `ALLOWED_AUTHORS`: A space-separated list of GitHub logins to review (default: `"SScholefield gpascucci"`). Only open PRs authored by these accounts will be processed.
+*   `BLOCKED_AUTHORS`: A space-separated list of GitHub logins to **IGNORE**. By default, it ignores automated update bots (like `@dependabot` and `@renovate`), while automatically reviewing all real developer PRs.
 *   `STATE_FILE`: The database path mapping PR numbers to their last reviewed HEAD commit SHA (default: `~/.gemini/tmp/ilcr-pr-reviews.json`).
 *   `REVIEW_MODE`: Set to `"manual"` to prompt in terminal, or `"automatic"` to auto-post immediately.
 *   `ENTERPRISE_AUTH`: Set to `true` to use corporate SSO/ADC instead of direct API keys.
@@ -94,7 +94,7 @@ To see a beautiful real-time visualization of the review daemon's state, active 
 ```bash
 /home/rylanevans/gemini-pr-reviewer/gemini-pr-dashboard.py
 ```
-*   **Live Scanning Queue:** Shows which PR is currently being reviewed and lists remaining PRs queued in FIFO order.
+*   **Live Scanning Queue:** Shows which PR is currently being reviewed and lists remaining PRs queued in FIFO order (excluding blocked authors).
 *   **Real-time Daemon State:** Dynamic text color updates indicating `Idle 💤`, `Scanning 🔍`, or `Reviewing 🤖`.
 *   **Reviewed History Table:** An aligned database grid of all recently approved, changes-requested, and skipped PR commits.
 *   **Flicker-free updates:** Polled and refreshed smoothly every 2 seconds.
