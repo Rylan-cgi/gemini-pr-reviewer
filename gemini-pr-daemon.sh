@@ -218,6 +218,14 @@ while true; do
             continue
         fi
 
+        # Restriction 2b: If the PR is already in CHANGES_REQUESTED state on GitHub, sync local database
+        if [ "$REVIEW_DECISION" == "CHANGES_REQUESTED" ] && [ "$LAST_STATUS" != "changes_requested" ]; then
+            jq '. + { "'"$PR_NUMBER"'": { "last_reviewed_sha": "'"$HEAD_SHA"'", "last_comments_hash": "github_changes_requested", "status": "changes_requested" } }' "$STATE_FILE" > "${STATE_FILE}.tmp"
+            mv "${STATE_FILE}.tmp" "$STATE_FILE"
+            echo "   🚨 PR #$PR_NUMBER is already in CHANGES_REQUESTED state on GitHub. Synced local state database."
+            LAST_STATUS="changes_requested"
+        fi
+
         # 2. Fetch PR Owner Comments for Context and Comment Hash Check
         echo "   💬 Loading comment history from PR owner @$AUTHOR..."
         OWNER_COMMENTS=$(gh pr view "$PR_NUMBER" --json comments --jq '.comments[] | select(.author.login == "'"$AUTHOR"'") | "[Comment by @'"$AUTHOR"']: " + .body' 2>/dev/null || true)
@@ -232,7 +240,7 @@ while true; do
             COMMENTS_HASH=$(echo "$OWNER_COMMENTS" | cksum | awk '{print $1}')
         fi
 
-        # Restriction 2b: Check state database to prevent redundant scans on identical commit AND identical comments
+        # Restriction 2c: Check state database to prevent redundant scans on identical commit AND identical comments
         LAST_SHA=$(jq -r '.["'"$PR_NUMBER"'"].last_reviewed_sha // "none"' "$STATE_FILE")
         LAST_HASH=$(jq -r '.["'"$PR_NUMBER"'"].last_comments_hash // "none"' "$STATE_FILE")
 
@@ -253,7 +261,7 @@ while true; do
         BOT_PREVIOUS_FEEDBACK=$(echo "$BOT_PREVIOUS_FEEDBACK" | sed 's/@/ [at] /g')
 
         # ----------------------------------------------------------------------
-        # Restriction 2c: Surgical Re-Review Gating (Filter Unrelated Commit Activity)
+        # Restriction 2d: Surgical Re-Review Gating (Filter Unrelated Commit Activity)
         # ----------------------------------------------------------------------
         if [ "$LAST_STATUS" == "changes_requested" ] && [ -n "$BOT_PREVIOUS_FEEDBACK" ]; then
             # 1. Parse your previous review feedback markdown and extract all flagged files/extensions
