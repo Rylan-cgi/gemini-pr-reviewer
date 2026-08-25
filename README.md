@@ -38,6 +38,57 @@ export GEMINI_API_KEY="your-api-key-here"
 
 ---
 
+## 🔑 Git & SSH Authentication Troubleshooting
+
+Because the review daemon executes a silent `git fetch` in the background on every polling cycle to pull down new commits, Git might prompt you for credentials or passphrases on your terminal, causing the background process to stall or hang. 
+
+To solve this, use one of the two solutions below:
+
+### Solution A: Repoint Remote to HTTPS (Highly Recommended & Zero Setup)
+If your target repository is cloned over SSH (e.g. `git@github.com:...`), Git will prompt you for your SSH key passphrase. By repointing your target repository's remote to **HTTPS**, Git will leverage your active `gh` CLI credentials helper to authenticate completely silently and automatically in 1 second, **never prompting for passwords or passphrases.**
+
+To repoint your target repository, navigate into your target repository clone on your machine and run:
+```bash
+# Repoint the remote to HTTPS
+git remote set-url origin https://github.com/bcgov/nr-ilcr.git
+```
+
+### Solution B: Load your SSH Key into `ssh-agent` (If keeping SSH)
+If you prefer to keep using SSH, you must ensure your SSH key is loaded into your active SSH Agent session so Git doesn't ask for a passphrase on every check.
+
+**Option 1: Load for the Active Terminal Session**
+Run this in your terminal window before starting the daemon:
+```bash
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_ed25519
+```
+
+**Option 2: Load Automatically on Login**
+Add this standard SSH agent manager block to the very bottom of your terminal profile (`~/.bashrc` or `~/.profile`):
+```bash
+SSH_ENV="$HOME/.ssh/agent-environment"
+
+function start_agent {
+    echo "Initializing new SSH agent..."
+    /usr/bin/ssh-agent | sed 's/^echo/#echo/' > "${SSH_ENV}"
+    chmod 600 "${SSH_ENV}"
+    . "${SSH_ENV}" > /dev/null
+    /usr/bin/ssh-add ~/.ssh/id_ed25519
+}
+
+if [ -f "${SSH_ENV}" ]; then
+    . "${SSH_ENV}" > /dev/null
+    ps -ef | grep ${SSH_AGENT_PID} | grep ssh-agent > /dev/null || {
+        start_agent;
+    }
+else
+    start_agent;
+fi
+```
+Save the file and run `source ~/.bashrc`. It will ask for your passphrase exactly once when you first open a terminal, and never prompt you again.
+
+---
+
 ## ⚙️ Customizing the Agent (`config.env`)
 
 You can modify configurations on-the-fly without changing any code! Simply open `config.env` and adjust the variables:
@@ -105,7 +156,7 @@ cd gemini-pr-reviewer
 *   **Live Scanning Queue:** Shows which PR is currently being reviewed and lists remaining PRs queued in FIFO order (excluding blocked authors and your own self-PRs).
 *   **Real-time Daemon State:** Dynamic text color updates indicating `Idle 💤`, `Scanning 🔍`, or `Reviewing 🤖`.
 *   **Reviewed History Table:** An aligned database grid of all recently approved, changes-requested, and skipped PR commits.
-*   **Flicker-free updates:** Polled and refreshed smoothly every 0.5 seconds.
+*   **Flicker-free updates:** Polled and refreshed smoothly every 2 seconds.
 
 ---
 
