@@ -157,6 +157,10 @@ while true; do
     # Identify bot/our own active GitHub user name (using the robust API call)
     BOT_USERNAME=$(gh api user --jq .login 2>/dev/null || echo "")
 
+    # Fetch latest remote commits silently to guarantee git diff always compiles successfully 
+    # and has access to newly pushed SHAs across all team branches
+    git fetch origin --quiet 2>/dev/null || git fetch --quiet 2>/dev/null || true
+
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🔍 Scanning open PRs in $REPO_NAME..."
     echo "{ \"status\": \"scanning\", \"current_pr\": \"none\", \"active_repo\": \"$REPO_NAME\", \"updated_at\": \"$(date '+%Y-%m-%d %H:%M:%S')\", \"queue\": [] }" > "$ACTIVE_STATE_FILE"
 
@@ -307,7 +311,7 @@ while true; do
             # 4. If neither the commits nor the comments touch or address your feedback, SKIP re-reviewing!
             # Keeps the changes_requested status, saves the new SHA/Hash to prevent loops, and skips safely.
             if [ "$NEW_COMMITS_TOUCHED_FEEDBACK" == "false" ] && [ "$NEW_COMMENTS_TOUCHED_FEEDBACK" == "false" ]; then
-                echo "   ⏭️  Skipping PR #$PR_NUMBER: New commits/comments do not reference or address your previous feedback."
+                echo "   ⏭  Skipping PR #$PR_NUMBER: New commits/comments do not reference or address your previous feedback."
                 jq '. + { "'"$PR_NUMBER"'": { "last_reviewed_sha": "'"$HEAD_SHA"'", "last_comments_hash": "'"$COMMENTS_HASH"'", "status": "changes_requested" } }' "$STATE_FILE" > "${STATE_FILE}.tmp"
                 mv "${STATE_FILE}.tmp" "$STATE_FILE"
                 continue
