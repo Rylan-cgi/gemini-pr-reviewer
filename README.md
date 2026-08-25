@@ -41,7 +41,7 @@ export GEMINI_API_KEY="your-api-key-here"
 ## ⚙️ Customizing the Agent (`config.env`)
 
 You can modify configurations on-the-fly without changing any code! Simply open `config.env` and adjust the variables:
-*   `REPO_DIR`: The absolute path to your target repository clone (default: `/home/rylanevans/ilcr/ilcr-bmad/nr-ilcr`). Jump-starts the CLI into this folder automatically from anywhere.
+*   `REPO_DIR`: The absolute path to your target repository clone. Jump-starts the CLI into this folder automatically from anywhere.
 *   `POLL_INTERVAL`: The check frequency in seconds (default: `300` = 5 minutes).
 *   `MAX_DIFF_LINES`: Skips scans on massive pull requests (default: `10000` lines) to conserve API tokens and prevent crashes.
 *   `IN_SCOPE_PATHS`: A regex pattern representing source directories to check (default: `"backend/src/|frontend/src/|frontend/e2e/"`). Bypasses lockfiles, assets, layout files, or documentation.
@@ -54,6 +54,11 @@ You can modify configurations on-the-fly without changing any code! Simply open 
 
 ## 🚀 Execution Modes
 
+First, navigate into the agent directory:
+```bash
+cd gemini-pr-reviewer
+```
+
 ### 1. Foreground Interactive Reviewer (Manual Confirmations)
 When run directly in your active terminal window, the script pauses before uploading comments:
 *   It performs the remote review, triggers a native desktop notification when finished, and outputs the draft markdown report directly on your screen.
@@ -64,15 +69,17 @@ When run directly in your active terminal window, the script pauses before uploa
 
 **How to run:**
 ```bash
-/home/rylanevans/gemini-pr-reviewer/gemini-pr-daemon.sh
+./gemini-pr-daemon.sh
 ```
+
+---
 
 ### 2. Background Daemon (Hands-off Auto-Poster)
 When run in the background, the script automatically bypasses confirmations, uploads the comments immediately upon completion, and alerts you via visual desktop alerts.
 
 **How to start the daemon:**
 ```bash
-/home/rylanevans/gemini-pr-reviewer/gemini-pr-daemon.sh > ~/gemini-pr-daemon.log 2>&1 &
+./gemini-pr-daemon.sh > ~/gemini-pr-daemon.log 2>&1 &
 ```
 
 **How to check background logs:**
@@ -82,29 +89,30 @@ tail -f ~/gemini-pr-daemon.log
 
 **How to stop the daemon:**
 ```bash
-kill $(pgrep -f "gemini-pr-reviewer/gemini-pr-daemon.sh")
+kill $(pgrep -f "gemini-pr-daemon.sh")
 ```
 
 ---
 
 ## 📊 Live Terminal TUI Dashboard
 
-To see a beautiful real-time visualization of the review daemon's state, active queue, and reviewed history without looking at raw text log streams, open a **separate terminal pane or window** (e.g. inside `tmux` or side-by-side terminal splits) and run:
+To see a beautiful real-time visualization of the review daemon's state, active queue, and reviewed history without looking at raw text log streams, open a **separate terminal pane or window** (e.g. inside `tmux` or side-by-side terminal splits), navigate to the directory, and run:
 
 ```bash
-/home/rylanevans/gemini-pr-reviewer/gemini-pr-dashboard.py
+cd gemini-pr-reviewer
+./gemini-pr-dashboard.py
 ```
 *   **Live Scanning Queue:** Shows which PR is currently being reviewed and lists remaining PRs queued in FIFO order (excluding blocked authors and your own self-PRs).
 *   **Real-time Daemon State:** Dynamic text color updates indicating `Idle 💤`, `Scanning 🔍`, or `Reviewing 🤖`.
 *   **Reviewed History Table:** An aligned database grid of all recently approved, changes-requested, and skipped PR commits.
-*   **Flicker-free updates:** Polled and refreshed smoothly every 2 seconds.
+*   **Flicker-free updates:** Polled and refreshed smoothly every 0.5 seconds.
 
 ---
 
 ## 🗄️ Understanding the Local State Database & Cache
 
 The daemon tracks its review history inside a local JSON database at:
-📁 `/home/rylanevans/.gemini/tmp/ilcr-pr-reviews.json`
+📁 `~/.gemini/tmp/ilcr-pr-reviews.json`
 
 For every PR scanned, it records three vital data points:
 ```json
