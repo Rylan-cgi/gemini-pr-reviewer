@@ -157,9 +157,11 @@ while true; do
     # Identify bot/our own active GitHub user name (using the robust API call)
     BOT_USERNAME=$(gh api user --jq .login 2>/dev/null || echo "")
 
-    # Fetch latest remote commits silently to guarantee git diff always compiles successfully 
-    # and has access to newly pushed SHAs across all team branches
-    git fetch origin --quiet 2>/dev/null || git fetch --quiet 2>/dev/null || true
+    # Fetch latest remote commits silently.
+    # Enforces non-interactive batch mode (GIT_TERMINAL_PROMPT=0, BatchMode=yes)
+    # This completely prevents Git/SSH from blocking or prompting for passphrases in background loops!
+    GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes" git fetch origin --quiet 2>/dev/null || \
+    GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes" git fetch --quiet 2>/dev/null || true
 
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 🔍 Scanning open PRs in $REPO_NAME..."
     echo "{ \"status\": \"scanning\", \"current_pr\": \"none\", \"active_repo\": \"$REPO_NAME\", \"updated_at\": \"$(date '+%Y-%m-%d %H:%M:%S')\", \"queue\": [] }" > "$ACTIVE_STATE_FILE"
