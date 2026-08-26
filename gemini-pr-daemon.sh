@@ -140,6 +140,27 @@ if BOOT_REPO=$(gh repo view --json owner,name --jq '.owner.login + "/" + .name' 
     echo "{ \"status\": \"offline\", \"current_pr\": \"none\", \"active_repo\": \"$BOOT_REPO\", \"updated_at\": \"$(date '+%Y-%m-%d %H:%M:%S')\", \"queue\": [] }" > "$ACTIVE_STATE_FILE"
 fi
 
+# -----------------------------------------------------------------------------
+# Remote Corporate Agent Skill Integration (One-Time Boot Fetch)
+# -----------------------------------------------------------------------------
+DYNAMIC_SKILL=""
+if [ "${FETCH_REMOTE_SKILL:-false}" == "true" ] || [ "${FETCH_REMOTE_SKILL:-}" == "1" ]; then
+    echo "📥 Pulling latest corporate review skill from $REMOTE_SKILL_REPO..."
+    # Query the enterprise GitHub Content API silently using active SSO credentials
+    if REMOTE_SKILL_BASE64=$(gh api "repos/$REMOTE_SKILL_REPO/contents/$REMOTE_SKILL_PATH" --hostname "$REMOTE_SKILL_HOST" --jq .content 2>/dev/null); then
+        if [ -n "$REMOTE_SKILL_BASE64" ]; then
+            DYNAMIC_SKILL=$(echo "$REMOTE_SKILL_BASE64" | base64 -d 2>/dev/null || echo "")
+            # Replace '@' with ' [at] ' to prevent gemini-cli from parsing it as a file-loading directive
+            DYNAMIC_SKILL=$(echo "$DYNAMIC_SKILL" | sed 's/@/ [at] /g')
+            echo "   ✅ Successfully loaded and cached remote review skill in memory!"
+        else
+            echo "   ⚠️  Warning: Remote skill payload was empty."
+        fi
+    else
+        echo "   ⚠️  Warning: Failed to fetch remote review skill. Offline mode active."
+    fi
+fi
+
 echo "🚀 Starting PR Review Daemon..."
 echo "⚙️  Interval: $POLL_INTERVAL seconds"
 echo "⚙️  Repository: $REPO_DIR"
@@ -401,25 +422,6 @@ $(cat "$SCRIPT_DIR/review-format.md")
 "
             # Replace '@' with ' [at] ' to prevent gemini-cli from parsing it as a file-loading directive
             FORMAT_INSTRUCTION=$(echo "$FORMAT_INSTRUCTION" | sed 's/@/ [at] /g')
-        fi
-
-        # 6b. Fetch Remote Corporate Agent Skill in real-time (if enabled in config)
-        DYNAMIC_SKILL=""
-        if [ "${FETCH_REMOTE_SKILL:-false}" == "true" ] || [ "${FETCH_REMOTE_SKILL:-}" == "1" ]; then
-            echo "   📥 Pulling latest corporate review skill from $REMOTE_SKILL_REPO..."
-            # Query the enterprise GitHub Content API silently
-            if REMOTE_SKILL_BASE64=$(gh api "repos/$REMOTE_SKILL_REPO/contents/$REMOTE_SKILL_PATH" --hostname "$REMOTE_SKILL_HOST" --jq .content 2>/dev/null); then
-                if [ -n "$REMOTE_SKILL_BASE64" ]; then
-                    DYNAMIC_SKILL=$(echo "$REMOTE_SKILL_BASE64" | base64 -d 2>/dev/null || echo "")
-                    # Replace '@' with ' [at] ' to prevent gemini-cli from parsing it as a file-loading directive
-                    DYNAMIC_SKILL=$(echo "$DYNAMIC_SKILL" | sed 's/@/ [at] /g')
-                    echo "   ✅ Successfully loaded latest remote review skill!"
-                else
-                    echo "   ⚠️  Warning: Remote skill payload was empty."
-                fi
-            else
-                echo "   ⚠️  Warning: Failed to fetch remote review skill. Falling back to local instructions."
-            fi
         fi
 
         # 7. Execute Headless Gemini Review
