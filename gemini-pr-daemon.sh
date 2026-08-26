@@ -146,16 +146,14 @@ fi
 DYNAMIC_SKILL=""
 if [ "${FETCH_REMOTE_SKILL:-false}" == "true" ] || [ "${FETCH_REMOTE_SKILL:-}" == "1" ]; then
     echo "📥 Pulling latest corporate review skill from $REMOTE_SKILL_REPO..."
-    # Query the enterprise GitHub Content API silently using active SSO credentials
-    if REMOTE_SKILL_BASE64=$(gh api "repos/$REMOTE_SKILL_REPO/contents/$REMOTE_SKILL_PATH" --hostname "$REMOTE_SKILL_HOST" --jq .content 2>/dev/null); then
-        if [ -n "$REMOTE_SKILL_BASE64" ]; then
-            DYNAMIC_SKILL=$(echo "$REMOTE_SKILL_BASE64" | base64 -d 2>/dev/null || echo "")
-            # Replace '@' with ' [at] ' to prevent gemini-cli from parsing it as a file-loading directive
-            DYNAMIC_SKILL=$(echo "$DYNAMIC_SKILL" | sed 's/@/ [at] /g')
-            echo "   ✅ Successfully loaded and cached remote review skill in memory!"
-        else
-            echo "   ⚠️  Warning: Remote skill payload was empty."
-        fi
+    # Query enterprise GitHub Contents API silently using active SSO credentials.
+    # Appending '|| true' ensures that even under strict shell versions, a network or VPN failure 
+    # never aborts startup, cleanly falling back to local configurations with no crashes.
+    if REMOTE_SKILL_BASE64=$(gh api "repos/$REMOTE_SKILL_REPO/contents/$REMOTE_SKILL_PATH" --hostname "$REMOTE_SKILL_HOST" --jq .content 2>/dev/null || echo "") && [ -n "$REMOTE_SKILL_BASE64" ] && [ "$REMOTE_SKILL_BASE64" != "null" ]; then
+        DYNAMIC_SKILL=$(echo "$REMOTE_SKILL_BASE64" | base64 -d 2>/dev/null || echo "")
+        # Replace '@' with ' [at] ' to prevent gemini-cli from parsing it as a file-loading directive
+        DYNAMIC_SKILL=$(echo "$DYNAMIC_SKILL" | sed 's/@/ [at] /g')
+        echo "   ✅ Successfully loaded and cached remote review skill in memory!"
     else
         echo "   ⚠️  Warning: Failed to fetch remote review skill. Offline mode active."
     fi
