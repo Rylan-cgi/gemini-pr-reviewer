@@ -69,6 +69,10 @@ if [ -z "${ENTERPRISE_AUTH:-}" ]; then
     echo "❌ Error: ENTERPRISE_AUTH is not defined or is empty in config.env."
     exit 1
 fi
+if [ -z "${FETCH_REMOTE_SKILL:-}" ]; then
+    echo "❌ Error: FETCH_REMOTE_SKILL is not defined or is empty in config.env."
+    exit 1
+fi
 
 # Active Run-State path definitions for the TUI dashboard
 ACTIVE_STATE_FILE="/home/rylanevans/.gemini/tmp/ilcr-pr-active-state.json"
@@ -143,6 +147,7 @@ echo "⚙️  Review Mode: $REVIEW_MODE (Interactive: $IS_INTERACTIVE)"
 echo "⚙️  State file: $STATE_FILE"
 echo "⚙️  Blocked authors: $BLOCKED_AUTHORS"
 echo "⚙️  Enterprise Authentication: ${ENTERPRISE_AUTH:-false}"
+echo "⚙️  Remote Skill Integration: $FETCH_REMOTE_SKILL"
 echo "--------------------------------------------------"
 
 while true; do
@@ -398,6 +403,25 @@ $(cat "$SCRIPT_DIR/review-format.md")
             FORMAT_INSTRUCTION=$(echo "$FORMAT_INSTRUCTION" | sed 's/@/ [at] /g')
         fi
 
+        # 6b. Fetch Remote Corporate Agent Skill in real-time (if enabled in config)
+        DYNAMIC_SKILL=""
+        if [ "${FETCH_REMOTE_SKILL:-false}" == "true" ] || [ "${FETCH_REMOTE_SKILL:-}" == "1" ]; then
+            echo "   📥 Pulling latest corporate review skill from $REMOTE_SKILL_REPO..."
+            # Query the enterprise GitHub Content API silently
+            if REMOTE_SKILL_BASE64=$(gh api "repos/$REMOTE_SKILL_REPO/contents/$REMOTE_SKILL_PATH" --hostname "$REMOTE_SKILL_HOST" --jq .content 2>/dev/null); then
+                if [ -n "$REMOTE_SKILL_BASE64" ]; then
+                    DYNAMIC_SKILL=$(echo "$REMOTE_SKILL_BASE64" | base64 -d 2>/dev/null || echo "")
+                    # Replace '@' with ' [at] ' to prevent gemini-cli from parsing it as a file-loading directive
+                    DYNAMIC_SKILL=$(echo "$DYNAMIC_SKILL" | sed 's/@/ [at] /g')
+                    echo "   ✅ Successfully loaded latest remote review skill!"
+                else
+                    echo "   ⚠️  Warning: Remote skill payload was empty."
+                fi
+            else
+                echo "   ⚠️  Warning: Failed to fetch remote review skill. Falling back to local instructions."
+            fi
+        fi
+
         # 7. Execute Headless Gemini Review
         echo "   🤖 Running AI code analysis..."
         export GEMINI_CLI_TRUST_WORKSPACE="true"
@@ -406,6 +430,7 @@ $(cat "$SCRIPT_DIR/review-format.md")
         # We redirect the filtered diff into standard input of gemini to bypass ARG_MAX limitations completely
         # Note: The prompt instructions and the standard input diff are fully sanitized of direct '@' symbols.
         # We explicitly inform the model about the '[at]' sanitation so it analyzes it perfectly.
+        # We inject $DYNAMIC_SKILL directly into the system prompt context.
         gemini --yolo -p "You are an expert software engineer and automated code reviewer. Review the following code diff passed via standard input for pull request #$PR_NUMBER. Look for critical bugs, memory leaks, performance issues, logic flaws, or type-safety bypasses.
 
 Note: For technical parsing safety, all '@' characters in the prompt, context, and standard input diff have been sanitized to '[at]'. Please interpret '[at]Annotation' as the standard '@Annotation' (such as '[at]Test' as '@Test', '[at]Override' as '@Override', and '[at]Min' as '@Min') in your code analysis.
@@ -415,6 +440,8 @@ Your review must critically analyze the code changes from three specialized lens
 2. EDGE-CASE (Edge Case Hunter): Evaluate boundary conditions, negative bounds, timing races, and robust error fallbacks.
 3. VERIFICATION-GAP: Contrast the changes against enterprise standards, checking for proper declarations, type safety, and clean abstractions.
         
+$DYNAMIC_SKILL
+
 $FORMAT_INSTRUCTION
 
 At the absolute end of your review response, append exactly one of the following lines to indicate your verdict:
