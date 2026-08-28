@@ -73,6 +73,10 @@ if [ -z "${FETCH_REMOTE_SKILL:-}" ]; then
     echo "❌ Error: FETCH_REMOTE_SKILL is not defined or is empty in config.env."
     exit 1
 fi
+if [ -z "${REQUIRE_REVIEW_REQUEST:-}" ]; then
+    echo "❌ Error: REQUIRE_REVIEW_REQUEST is not defined or is empty in config.env."
+    exit 1
+fi
 
 # Active Run-State path definitions for the TUI dashboard
 ACTIVE_STATE_FILE="/home/rylanevans/.gemini/tmp/ilcr-pr-active-state.json"
@@ -178,8 +182,23 @@ while true; do
         continue
     fi
 
-    # Identify bot/our own active GitHub user name (using the robust API call)
-    BOT_USERNAME=$(gh api user --jq .login 2>/dev/null || echo "")
+    # Identify bot/our own active GitHub user name with up to 3 retry limits
+    BOT_USERNAME=""
+    for i in {1..3}; do
+        BOT_USERNAME=$(gh api user --jq .login 2>/dev/null || echo "")
+        if [ -n "$BOT_USERNAME" ]; then
+            break
+        fi
+        sleep 1
+    done
+
+    # Strict Fail-Safe Block: If the username cannot be retrieved (due to complete connection dropout
+    # or temporary GitHub API downtime), refuse to scan any PRs on this cycle to prevent accidental self-reviews!
+    if [ -z "$BOT_USERNAME" ]; then
+        echo "⚠️  Warning: Failed to retrieve active GitHub username from API. Skipping scan cycle to prevent accidental self-reviews."
+        sleep "$POLL_INTERVAL"
+        continue
+    fi
 
     # Fetch latest remote commits silently.
     # Enforces non-interactive batch mode (GIT_TERMINAL_PROMPT=0, BatchMode=yes)
@@ -256,6 +275,20 @@ while true; do
             LAST_STATUS="changes_requested"
         fi
 
+        # Restriction 2c: Only review PRs where you are actively requested as a reviewer (for first-time scans)
+        if [ "$REQUIRE_REVIEW_REQUEST" == "true" ] || [ "$REQUIRE_REVIEW_REQUEST" == "1" ]; then
+            if [ "$LAST_STATUS" == "none" ]; then
+                IS_REQUESTED=$(gh pr view "$PR_NUMBER" --json reviewRequests --jq '.reviewRequests[] | select(.login == "'"$BOT_USERNAME"'") | .login' 2>/dev/null || echo "")
+                if [ -z "$IS_REQUESTED" ]; then
+                    echo "   ⏭️  Skipping PR #$PR_NUMBER: You (@$BOT_USERNAME) are not a requested reviewer."
+                    # Save as skipped in state database so we don't query it again redundantly on this commit
+                    jq '. + { "'"$PR_NUMBER"'": { "last_reviewed_sha": "'"$HEAD_SHA"'", "last_comments_hash": "not_requested", "status": "skipped" } }' "$STATE_FILE" > "${STATE_FILE}.tmp"
+                    mv "${STATE_FILE}.tmp" "$STATE_FILE"
+                    continue
+                fi
+            fi
+        fi
+
         # 2. Fetch PR Owner Comments for Context and Comment Hash Check
         echo "   💬 Loading comment history from PR owner @$AUTHOR..."
         OWNER_COMMENTS=$(gh pr view "$PR_NUMBER" --json comments --jq '.comments[] | select(.author.login == "'"$AUTHOR"'") | "[Comment by @'"$AUTHOR"']: " + .body' 2>/dev/null || true)
@@ -270,7 +303,7 @@ while true; do
             COMMENTS_HASH=$(echo "$OWNER_COMMENTS" | cksum | awk '{print $1}')
         fi
 
-        # Restriction 2c: Check state database to prevent redundant scans on identical commit AND identical comments
+        # Restriction 2d: Check state database to prevent redundant scans on identical commit AND identical comments
         LAST_SHA=$(jq -r '.["'"$PR_NUMBER"'"].last_reviewed_sha // "none"' "$STATE_FILE")
         LAST_HASH=$(jq -r '.["'"$PR_NUMBER"'"].last_comments_hash // "none"' "$STATE_FILE")
 
@@ -291,7 +324,7 @@ while true; do
         BOT_PREVIOUS_FEEDBACK=$(echo "$BOT_PREVIOUS_FEEDBACK" | sed 's/@/ [at] /g')
 
         # ----------------------------------------------------------------------
-        # Restriction 2d: Surgical Re-Review Gating (Filter Unrelated Commit Activity)
+        # Restriction 2e: Surgical Re-Review Gating (Filter Unrelated Commit Activity)
         # ----------------------------------------------------------------------
         if [ "$LAST_STATUS" == "changes_requested" ] && [ -n "$BOT_PREVIOUS_FEEDBACK" ]; then
             # 1. Parse your previous review feedback markdown and extract all flagged files/extensions
